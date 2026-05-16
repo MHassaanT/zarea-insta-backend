@@ -182,13 +182,22 @@ app.post("/webhook", async (req, res) => {
       if (webhookEvent.message && webhookEvent.message.text) {
         try {
           // Find userId for this Instagram account
+          console.log(`📩 [Webhook] Looking up session for IG ID: ${igbaId}`);
+          
           const sessionQuery = await db.collection(INSTA_SESSIONS_COLLECTION)
-            .where("instagramBusinessId", "==", igbaId)
-            .limit(1)
+            .where("instagramBusinessId", "==", String(igbaId))
             .get();
 
           if (sessionQuery.empty) {
             console.log(`⚠️ [Webhook] No session found for IG ID ${igbaId}`);
+            
+            // DIAGNOSTIC: Log what's actually in the database
+            const allSessions = await db.collection(INSTA_SESSIONS_COLLECTION).get();
+            console.log(`🔍 Diagnostic: Found ${allSessions.size} total sessions in database:`);
+            allSessions.forEach(doc => {
+              const data = doc.data();
+              console.log(`   - User: ${doc.id}, Stored IG ID: "${data.instagramBusinessId}" (Type: ${typeof data.instagramBusinessId}), Connected: ${data.connected}`);
+            });
             continue;
           }
 
