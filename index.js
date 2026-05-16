@@ -147,6 +147,9 @@ app.use(express.json());
 
 // --- WEBHOOK VERIFICATION ---
 app.get("/webhook", (req, res) => {
+  console.log("🔍 [Webhook] Verification request received");
+  console.log("Query Params:", JSON.stringify(req.query, null, 2));
+
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
@@ -154,11 +157,17 @@ app.get("/webhook", (req, res) => {
   if (mode && token) {
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
       console.log("✅ [Webhook] Verified by Meta (Instagram)");
-      res.status(200).send(challenge);
+      // Meta expects the challenge to be returned as plain text
+      return res.status(200).set('Content-Type', 'text/plain').send(challenge);
     } else {
-      res.sendStatus(403);
+      console.log("❌ [Webhook] Verification failed: Token mismatch or invalid mode");
+      console.log(`Expected: ${VERIFY_TOKEN}, Received: ${token}`);
+      return res.sendStatus(403);
     }
   }
+  
+  console.log("⚠️ [Webhook] Verification request missing parameters");
+  res.status(400).send("Missing hub.mode or hub.verify_token");
 });
 
 // --- WEBHOOK EVENT HANDLER ---
