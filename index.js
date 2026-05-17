@@ -70,7 +70,8 @@ async function saveInstagramMessage(payload, userId) {
     const messageData = {
       timestamp: admin.firestore.Timestamp.now(),
       userId,
-      phoneNumber: igsid, // Using IGSID as the unique identifier
+      instagramBusinessId, // Store this to find the right token later
+      phoneNumber: igsid,
       from: igsid,
       to: instagramBusinessId,
       type: "chat",
@@ -105,12 +106,16 @@ function startReplyListener() {
         const doc = change.doc;
         const msg = doc.data();
         
-        if (!msg.autoReplyText || !msg.from || !msg.userId) return;
+        if (!msg.autoReplyText || !msg.from || !msg.instagramBusinessId) return;
 
         try {
-          // Get Page Access Token from instagram_sessions
-          const sessionSnap = await db.collection(INSTA_SESSIONS_COLLECTION).doc(msg.userId).get();
-          if (!sessionSnap.exists) return;
+          // Get Page Access Token from instagram_sessions using the specific IG ID
+          const sessionSnap = await db.collection(INSTA_SESSIONS_COLLECTION).doc(msg.instagramBusinessId).get();
+          
+          if (!sessionSnap.exists) {
+              console.error(`❌ [Executor] No session found for IG ID: ${msg.instagramBusinessId}`);
+              return;
+          }
           
           const { pageAccessToken } = sessionSnap.data();
           if (!pageAccessToken) return;
@@ -182,17 +187,26 @@ app.post("/webhook", async (req, res) => {
       if (webhookEvent.message && webhookEvent.message.text) {
         try {
           // Find userId for this Instagram account
+          console.log(`📩 [Webhook] Looking up session for IG ID: ${igbaId}`);
+          
           const sessionQuery = await db.collection(INSTA_SESSIONS_COLLECTION)
-            .where("instagramBusinessId", "==", igbaId)
-            .limit(1)
+            .where("instagramBusinessId", "==", String(igbaId))
             .get();
 
           if (sessionQuery.empty) {
             console.log(`⚠️ [Webhook] No session found for IG ID ${igbaId}`);
+            
+            // DIAGNOSTIC: Log what's actually in the database
+            const allSessions = await db.collection(INSTA_SESSIONS_COLLECTION).get();
+            console.log(`🔍 Diagnostic: Found ${allSessions.size} total sessions in database:`);
+            allSessions.forEach(doc => {
+              const data = doc.data();
+              console.log(`   - DocID: ${doc.id}, UserID: ${data.userId}, Stored IG ID: "${data.instagramBusinessId}", Connected: ${data.connected}`);
+            });
             continue;
           }
 
-          const userId = sessionQuery.docs[0].id;
+          const userId = sessionQuery.docs[0].data().userId;
           await saveInstagramMessage(webhookEvent, userId);
         } catch (error) {
           console.error("❌ [Webhook] Processing Error:", error.message);
